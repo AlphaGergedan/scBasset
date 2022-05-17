@@ -120,19 +120,6 @@ def make_bed_seqs(bed_file, fasta_file, seq_len, stranded=False):
     fasta_open.close()
     return seqs_dna, seqs_coords
 
-
-##############
-# activation #
-##############
-class GELU(tf.keras.layers.Layer):
-    def __init__(self, **kwargs):
-        super(GELU, self).__init__(**kwargs)
-
-    def call(self, x):
-        # return tf.keras.activations.sigmoid(1.702 * x) * x
-        return tf.keras.activations.sigmoid(tf.constant(1.702) * x) * x
-
-
 ##########
 # layers #
 ##########
@@ -290,7 +277,7 @@ def conv_block(
 
     # activation
     if activation=="gelu":
-        current = GELU()(current)
+        current = tf.keras.activations.gelu(current, approximate=True)
     else:
         current = tf.keras.layers.ReLU()(current)
 
@@ -418,7 +405,7 @@ def dense_block(
 
     # activation
     if activation=="gelu":
-        current = GELU()(current)
+        current = tf.keras.activations.gelu(current, approximate=True)
     else:
         current = tf.keras.layers.ReLU()(current)
 
@@ -461,44 +448,3 @@ def dense_block(
     return current
 
 
-def final(
-    inputs,
-    units,
-    activation="linear",
-    flatten=False,
-    kernel_initializer="he_normal",
-    l2_scale=0,
-    l1_scale=0,
-):
-    """Final simple transformation before comparison to targets.
-    Args:
-        inputs:         [batch_size, seq_length, features] input sequence
-        units:          Dense units
-        activation:     relu/gelu/etc
-        flatten:        Flatten positional axis.
-        l2_scale:       L2 regularization weight.
-        l1_scale:       L1 regularization weight.
-    Returns:
-        [batch_size, seq_length(?), units] output sequence
-    """
-    current = inputs
-
-    # flatten
-    if flatten:
-        _, seq_len, seq_depth = current.shape
-        current = tf.keras.layers.Reshape(
-            (
-                1,
-                seq_len * seq_depth,
-            )
-        )(current)
-
-    # dense
-    current = tf.keras.layers.Dense(
-        units=units,
-        use_bias=True,
-        activation=activation,
-        kernel_initializer=kernel_initializer,
-        kernel_regularizer=tf.keras.regularizers.l1_l2(l1_scale, l2_scale),
-    )(current)
-    return current

@@ -179,87 +179,24 @@ def make_model(
     n_cells,
     seq_len=1344,
     show_summary=True,
-):
-    """create keras CNN model.
-    Args:
-        bottleneck_size:int. size of the bottleneck layer.
-        n_cells:        int. number of cells in the dataset. Defined the number of tasks.
-        seq_len:        int. peak size used to train. Default to 1344.
-        show_summary:   logical. Whether to print the model summary. Default to True.
-    Returns:
-        keras model:    object of keras model class.
-    """
-    sequence = tf.keras.Input(
-        shape=(seq_len, 4),
-        name="sequence",
-    )
-    current = sequence
-    (current, reverse_bool,) = StochasticReverseComplement()(
-        current
-    )  # enable random rv
-    current = StochasticShift(3)(current)  # enable random shift
-    current = conv_block(
-        current,
-        filters=288,
-        kernel_size=17,
-        pool_size=3,
-    )  # 1 cnn block
-    current = conv_tower(
-        current,
-        filters_init=288,
-        filters_mult=1.122,
-        repeat=6,
-        kernel_size=5,
-        pool_size=2,
-    )  # cnn tower
-    current = conv_block(
-        current,
-        filters=256,
-        kernel_size=1,
-    )
-    current = dense_block(
-        current,
-        flatten=True,
-        units=bottleneck_size,
-        dropout=0.2,
-    )
-    current = GELU()(current)
-    current = final(
-        current,
-        units=n_cells,
-        activation="sigmoid",
-    )
-    current = SwitchReverse()(
-        [current, reverse_bool]
-    )  # switch back, # this doesn't matter
-    current = tf.keras.layers.Flatten()(current)
-    model = tf.keras.Model(inputs=sequence, outputs=current)
-    if show_summary:
-        model.summary()
-    return model
-
-
-
-def make_model_bc(
-    bottleneck_size,
-    n_cells,
-    batch_m,
+    bc=False,
+    batch_m=None,
     l2_1=0,
     l2_2=0,
-    seq_len=1344,
-    show_summary=True,
 ):
     """create keras CNN model.
     Args:
         bottleneck_size:int. size of the bottleneck layer.
         n_cells:        int. number of cells in the dataset. Defined the number of tasks.
-        batch_m:        pandas DataFrame. dummy-coded binary matrix for batch information.
         seq_len:        int. peak size used to train. Default to 1344.
         show_summary:   logical. Whether to print the model summary. Default to True.
+        bc:             logical. whether to perform batch correction.
+        batch_m:        pd.DataFrame. dummy-coded batch matrix.
+        l2_1:           float. l2 regularizer for regular path.
+        l2_2:           float. l2 regularizer for batch path.
     Returns:
         keras model:    object of keras model class.
     """
-        
     sequence = tf.keras.Input(
         shape=(seq_len, 4),
         name="sequence",
@@ -267,7 +204,7 @@ def make_model_bc(
     current = sequence
     (current, reverse_bool,) = StochasticReverseComplement()(
         current
-    )  # enable random rv
+    )  # enable random reverse complement
     current = StochasticShift(3)(current)  # enable random shift
     current = conv_block(
         current,
@@ -294,25 +231,30 @@ def make_model_bc(
         units=bottleneck_size,
         dropout=0.2,
     )
-    current = GELU()(current)
+    current = tf.keras.activations.gelu(current, approximate=True)
     
-    # replace the following:
-    #current = final(
-    #    current,
-    #    units=n_cells,
-    #    activation="sigmoid",
-    #)
-    batch_info = tf.constant(batch_m.values.transpose(), dtype='float32') # batch matrix
-    current1 = tf.keras.layers.Dense(units=n_cells, # path1
-                                     kernel_regularizer=tf.keras.regularizers.l2(l2_1))(current)
+    
+    # whether add second path for batch correction
+    if bc:
+        batch_info = tf.constant(batch_m.values.transpose(), dtype='float32') # batch matrix
+        current1 = tf.keras.layers.Dense(units=n_cells, # path1
+                                         kernel_regularizer=tf.keras.regularizers.l2(l2_1))(current)
 
-    current2 = tf.keras.layers.Dense(units=batch_info.shape[0], # path2
-                                     kernel_regularizer=tf.keras.regularizers.l2(l2_2))(current)
-    current2 = tf.linalg.matmul(current2, batch_info) 
-    current = tf.math.add(current1, current2) # sum
-    current = tf.keras.layers.Activation(activation='sigmoid')(current)
+        current2 = tf.keras.layers.Dense(units=batch_info.shape[0], # path2
+                                         kernel_regularizer=tf.keras.regularizers.l2(l2_2))(current)
+        current2 = tf.linalg.matmul(current2, batch_info) 
+        current = tf.math.add(current1, current2) # sum
+        current = tf.keras.layers.Activation(activation='sigmoid')(current)
+
+    else:
+        current = tf.keras.layers.Dense(
+            units=n_cells,
+            use_bias=True,
+            activation='sigmoid',
+            kernel_initializer='he_normal',
+            dtype='float32',
+        )(current)
     
-    # the same as before
     current = SwitchReverse()(
         [current, reverse_bool]
     )  # switch back, # this doesn't matter
@@ -321,7 +263,6 @@ def make_model_bc(
     if show_summary:
         model.summary()
     return model
-
 
 def print_memory():
     process = psutil.Process(os.getpid())
