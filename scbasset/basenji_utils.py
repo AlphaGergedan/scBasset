@@ -126,7 +126,7 @@ def make_bed_seqs(bed_file, fasta_file, seq_len, stranded=False):
 class StochasticReverseComplement(tf.keras.layers.Layer):
     """Stochastically reverse complement a one hot encoded DNA sequence."""
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         super(StochasticReverseComplement, self).__init__()
 
     def call(self, seq_1hot, training=None):
@@ -143,7 +143,7 @@ class StochasticReverseComplement(tf.keras.layers.Layer):
 class SwitchReverse(tf.keras.layers.Layer):
     """Reverse predictions if the inputs were reverse complemented."""
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         super(SwitchReverse, self).__init__()
 
     def call(self, x_reverse):
@@ -164,7 +164,7 @@ class SwitchReverse(tf.keras.layers.Layer):
 class StochasticShift(tf.keras.layers.Layer):
     """Stochastically shift a one hot encoded DNA sequence."""
 
-    def __init__(self, shift_max=0, pad="uniform"):
+    def __init__(self, shift_max=0, pad="uniform", **kwargs):
         super(StochasticShift, self).__init__()
         self.shift_max = shift_max
         self.augment_shifts = tf.range(-self.shift_max, self.shift_max + 1)
